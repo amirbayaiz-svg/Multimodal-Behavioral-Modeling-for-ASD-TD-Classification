@@ -1,360 +1,366 @@
-# Multimodal Behavioral Modeling for ASD/TD Classification
+# HMB-TSC: Hybrid Multibranch Time-Series Classification for ASD/TD Screening
 
-Профессиональный исследовательский README, подготовленный только на основе двух ноутбуков:
+This repository contains a fully executable reconstruction of the HMB-TSC experimental workflow for binary ASD/TD classification from 2D skeletal time-series data. The project implements the complete machine-learning pipeline: dataset discovery, subject-level data preparation, feature transformation, exploratory analysis, model training, holdout evaluation, cross-validation, ablation analysis, nested validation, statistical testing, robustness checks, and publication-ready visualizations.
 
-- `01_dataset_exploration.ipynb`
-- `02_model_training_and_multitask_inference.ipynb`
+The main goal of the repository is to provide a reproducible implementation of the proposed HMB-TSC model and all supporting experiments using the available `Dataset-2` data directory. All performance values reported in this README are taken only from the released notebook outputs stored in `results/tables/`.
 
-Проект описывает полный аналитический и экспериментальный workflow для классификации `ASD` и `TD` на основе мультимодальных поведенческих данных: gaze/Tobii-показателей, координат взаимодействия с объектом, положения головы, facial action units, smile probability, face visibility и других temporal/session-level признаков.
+## Reproducible Result Scope
 
-> Назначение: исследовательская воспроизводимость и экспертный анализ моделей. Это не клинический диагностический продукт.
+The repository contains only the 100 original 2D trajectories and regenerates synthetic variants inside each training split. Therefore, the reproducible values for this archive are the generated values listed in `results/tables/` and repeated below. No additional performance values are used in the README tables.
 
-## Scientific Summary
+For this released run, HMB-TSC reached holdout `Accuracy = 0.850`, `AUROC = 0.948`, and `F1 = 0.880`; 5-fold and nested 5x3 validation both reached `Accuracy = 0.850 ± 0.035`, `AUROC = 0.940 ± 0.029`, and `F1 = 0.845 ± 0.036`.
 
-В двух ноутбуках выполнены две взаимосвязанные части исследования:
-
-| Notebook | Scientific role | Main output |
-|---|---|---|
-| `01_dataset_exploration.ipynb` | Dataset audit, exploratory data analysis, temporal/segment-level analysis, unsupervised structure analysis | Dataset profile, class balance, feature effect sizes, temporal ASD/TD differences, PCA, t-SNE, KMeans, hierarchical clustering |
-| `02_model_training_and_multitask_inference.ipynb` | Supervised modeling and reproducible inference | Classical ML, deep time-series models, cross-validation, holdout testing, modality-level interpretation, saved inference output |
-
-Главный научный вывод: различие между ASD и TD в этих данных сильнее всего проявляется в gaze/object-interaction признаках и temporal behavioral dynamics. Это подтверждается как EDA-результатами, так и качеством modality-level моделей.
-
-## Dataset Profile
-
-Первый ноутбук сформировал исследовательский датасет на уровне сессий и временных последовательностей.
-
-| Metric | Value |
-|---|---:|
-| Sessions | 99 |
-| Children | 99 |
-| Total extracted features | 224 |
-| Modeling features | 149 |
-| ASD sessions | 52 |
-| TD sessions | 47 |
-| ASD ratio | 0.525 |
-| Sequence shape | `(99, 160, 14)` |
-
-Class distribution is close to balanced, which is important for supervised binary classification.
-
-![Class distribution](README_assets/01_EDA/class_distribution.png)
-
-## Sequence Representation
-
-The temporal dataset contains 160 normalized time bins and 14 sequence features.
-
-| Temporal feature group | Features used in sequence modeling |
-|---|---|
-| Eye/object coordinates | `x`, `y`, `center_x`, `center_y`, `gaze_object_distance` |
-| Data validity | `validity`, `face_ok`, `object_visible`, `object_exploded` |
-| Head movement | `head_yaw`, `head_pitch` |
-| Facial behavior | `smile_prob`, `au6`, `au12` |
-
-This representation allows the models to use not only static summary statistics, but also session dynamics.
-
-## Exploratory Data Analysis
-
-EDA shows that the strongest discriminative signals are concentrated in gaze validity, gaze-object distance, gaze dispersion, AOI interaction and gaze-following metrics.
-
-### Top Effect Sizes
-
-| Rank | Feature | Absolute Cohen's d |
-|---:|---|---:|
-| 1 | `F3_gaze_valid_rate` | 1.786 |
-| 2 | `gaze_object_distance_p75` | 1.741 |
-| 3 | `gaze_object_distance_mean` | 1.657 |
-| 4 | `gaze_x_std` | 1.482 |
-| 5 | `F1_gaze_valid_rate` | 1.367 |
-| 6 | `F3_Gfollow` | 1.321 |
-| 7 | `all_mean_Gfollow` | 1.321 |
-| 8 | `gaze_object_distance_p25` | 1.302 |
-| 9 | `F3_aoi_hits` | 1.276 |
-| 10 | `gaze_y_std` | 1.267 |
-| 11 | `F3_aoi_dwell_ms` | 1.248 |
-| 12 | `gaze_validity_rate` | 1.169 |
-| 13 | `F1_aoi_hits` | 1.155 |
-| 14 | `F5_gaze_valid_rate` | 1.121 |
-| 15 | `all_mean_aoi_dwell_ms` | 1.106 |
-
-![Effect size ranking](README_assets/01_EDA/effect_size_top20.png)
-
-Interpretation: the top-ranked variables indicate that ASD/TD separation is driven primarily by differences in visual attention stability, object-oriented gaze behavior and interaction with task-relevant areas of interest.
-
-### Missingness and Feature Distributions
-
-![Missing ratio top 20](README_assets/01_EDA/missing_ratio_top20.png)
-
-![Top feature histograms](README_assets/01_EDA/top_feature_histograms.png)
-
-The missingness plot is important because behavioral data often contain sensor dropout, tracking loss and event-level sparsity. The histogram panel shows that many discriminative variables are not normally distributed, which explains why both linear models with scaling and nonlinear models are scientifically relevant.
-
-### Correlation Structure
-
-![Correlation heatmap](README_assets/01_EDA/correlation_heatmap_top25.png)
-
-The correlation structure shows that many gaze and AOI variables are related but not identical. This supports the use of multivariate models: the classification signal is distributed across several correlated behavioral indicators rather than isolated in a single feature.
-
-## Temporal ASD/TD Differences
-
-The notebooks compare ASD and TD temporal profiles across normalized session time.
-
-| Feature | ASD mean | TD mean | ASD - TD |
-|---|---:|---:|---:|
-| `gaze_object_distance` | 0.387 | 0.255 | +0.132 |
-| `smile_prob` | 0.039 | 0.026 | +0.013 |
-| `head_yaw` | 0.394 | -1.107 | +1.500 |
-| `validity` | 0.652 | 0.853 | -0.200 |
-| `object_visible` | 0.979 | 0.967 | +0.012 |
-
-![Temporal class mean profiles](README_assets/01_EDA/temporal_profiles_class_mean.png)
-
-![Segment metric trends](README_assets/01_EDA/segment_metric_trends.png)
-
-Interpretation: ASD sessions show larger gaze-object distance and lower validity. This means that the ASD/TD difference is not only a class-level difference, but also a temporal behavioral pattern across the task.
-
-## Single-Session Behavioral Panels
-
-The first notebook also compares one TD and one ASD session using normalized temporal profiles.
-
-![Eye object dynamics](README_assets/01_EDA/single_session_eye_object_xy_td_vs_asd.png)
-
-![Head rotation dynamics](README_assets/01_EDA/single_session_head_rotation_td_vs_asd.png)
-
-![Facial mimic dynamics](README_assets/01_EDA/single_session_facial_mimic_td_vs_asd.png)
-
-![Emotion dynamics](README_assets/01_EDA/single_session_emotion_td_vs_asd.png)
-
-These panels are useful for qualitative interpretation. They show how coordinate dynamics, head motion, facial mimic and emotion-related signals change over time in a session, instead of reducing the participant to one static score.
-
-## Unsupervised Structure
-
-The EDA notebook applies PCA, t-SNE, KMeans and hierarchical clustering.
-
-| Metric | Value |
-|---|---:|
-| Adjusted Rand Index | 0.425 |
-| Normalized Mutual Information | 0.379 |
-| Silhouette | 0.122 |
-
-![PCA projection](README_assets/01_EDA/pca_projection.png)
-
-![t-SNE projection](README_assets/01_EDA/tsne_projection.png)
-
-![KMeans clusters in PCA space](README_assets/01_EDA/kmeans_clusters_pca.png)
-
-![Hierarchical dendrogram](README_assets/01_EDA/hierarchical_dendrogram.png)
-
-Interpretation: unsupervised structure is present but moderate. The low silhouette value indicates that ASD and TD do not form two perfectly separated natural clusters in the raw feature space. This explains why supervised learning improves performance: labels help combine distributed weak and medium behavioral signals into a stronger decision boundary.
-
-## Supervised Modeling
-
-The second notebook trains and evaluates two groups of models:
-
-| Model family | Models |
-|---|---|
-| Classical ML | Logistic Regression, SVC with RBF kernel, Random Forest |
-| Deep time-series | BiLSTM, CNN1D, Transformer |
-
-The notebook reports:
-
-| Metric | Value |
-|---|---:|
-| Samples | 99 |
-| Modeling features | 149 |
-| Best classical model | Logistic Regression |
-| Best deep model | BiLSTM_TS |
-| Best classical CV ROC-AUC | 0.976 |
-| Best deep CV ROC-AUC | 0.921 |
-| Best classical holdout ROC-AUC | 0.985 |
-| Best deep holdout ROC-AUC | 0.980 |
-
-## Classical ML Results
-
-### Cross-Validation
-
-| Model | Accuracy | Balanced accuracy | Precision | Recall | F1 | PR-AUC | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Logistic Regression | 0.899 | 0.898 | 0.889 | 0.923 | 0.906 | 0.978 | 0.976 |
-| SVC RBF | 0.889 | 0.887 | 0.873 | 0.923 | 0.897 | 0.966 | 0.958 |
-| Random Forest | 0.879 | 0.880 | 0.900 | 0.865 | 0.882 | 0.953 | 0.927 |
-
-### Holdout
-
-| Model | Accuracy | Balanced accuracy | Precision | Recall | F1 | PR-AUC | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Logistic Regression | 0.879 | 0.875 | 0.810 | 1.000 | 0.895 | 0.987 | 0.985 |
-| SVC RBF | 0.848 | 0.844 | 0.773 | 1.000 | 0.872 | 0.988 | 0.985 |
-| Random Forest | 0.879 | 0.877 | 0.842 | 0.941 | 0.889 | 0.982 | 0.978 |
-
-![Classical ROC PR curves](README_assets/02_Modeling/classical_roc_pr_curves.png)
-
-Interpretation: Logistic Regression performs best among classical models. This is scientifically plausible because the EDA found strong engineered gaze and AOI predictors. With only 99 samples, a regularized linear model can generalize better than more flexible models when the feature representation is already informative.
-
-## Deep Time-Series Results
-
-### Cross-Validation
-
-| Model | Accuracy | Balanced accuracy | Precision | Recall | F1 | PR-AUC | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| BiLSTM_TS | 0.879 | 0.880 | 0.900 | 0.865 | 0.882 | 0.917 | 0.921 |
-| CNN1D_TS | 0.828 | 0.829 | 0.857 | 0.808 | 0.832 | 0.918 | 0.901 |
-| Transformer_TS | 0.818 | 0.817 | 0.815 | 0.846 | 0.830 | 0.868 | 0.887 |
-
-### Holdout
-
-| Model | Accuracy | Balanced accuracy | Precision | Recall | F1 | PR-AUC | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| BiLSTM_TS | 0.900 | 0.900 | 0.833 | 1.000 | 0.909 | 0.983 | 0.980 |
-| CNN1D_TS | 0.900 | 0.900 | 0.833 | 1.000 | 0.909 | 0.981 | 0.980 |
-| Transformer_TS | 0.850 | 0.850 | 0.818 | 0.900 | 0.857 | 0.948 | 0.930 |
-
-![Deep ROC curves](README_assets/02_Modeling/deep_roc_curve_models.png)
-
-![Deep training history](README_assets/02_Modeling/deep_training_history_best_model.png)
-
-Interpretation: the BiLSTM model is the strongest deep temporal model in cross-validation. This is expected because BiLSTM can model sequential dependencies in both temporal directions, which is useful for session-level behavioral trajectories. The Transformer is competitive but weaker here, likely because the dataset is small and transformer-style models usually require more data to fully benefit from attention-based representations.
-
-## Overall Model Comparison
-
-![Model comparison](README_assets/02_Modeling/model_comparison_bar.png)
-
-| Rank | Model | Family | ROC-AUC | PR-AUC | Balanced accuracy | F1 |
-|---:|---|---|---:|---:|---:|---:|
-| 1 | Logistic Regression | Classical | 0.976 | 0.978 | 0.898 | 0.906 |
-| 2 | SVC RBF | Classical | 0.958 | 0.966 | 0.887 | 0.897 |
-| 3 | Random Forest | Classical | 0.927 | 0.953 | 0.880 | 0.882 |
-| 4 | BiLSTM_TS | Deep | 0.921 | 0.917 | 0.880 | 0.882 |
-| 5 | CNN1D_TS | Deep | 0.901 | 0.918 | 0.829 | 0.832 |
-| 6 | Transformer_TS | Deep | 0.887 | 0.868 | 0.817 | 0.830 |
-
-The classical models outperform deep temporal models in cross-validation, while deep models remain strong on the holdout split. The most defensible explanation is sample efficiency: the tabular representation contains 149 engineered behavioral features, whereas deep sequence models learn from 99 sequences with 160 time bins and 14 temporal channels. For this sample size, engineered features plus regularized classification provide a strong bias-variance tradeoff.
-
-## Modality-Level Interpretation
-
-The second notebook evaluates modality-specific predictive quality.
-
-| Modality | Number of features | CV ROC-AUC |
-|---|---:|---:|
-| Tobii / gaze | 62 | 0.945 |
-| Mimic | 44 | 0.916 |
-| Face points | 13 | 0.855 |
-| Emotion | 3 | 0.682 |
-
-Interpretation:
-
-- Tobii/gaze is the strongest modality, consistent with the EDA where gaze validity, gaze-object distance and AOI metrics dominate the effect-size ranking.
-- Mimic features are also highly informative, suggesting that facial and head-orientation behavior contributes complementary signal.
-- Face-point features are useful but weaker than gaze and mimic.
-- Emotion features alone are limited, likely because this modality has only three summary features and captures a narrower behavioral channel.
-
-## Multitask Inference Output
-
-The notebook produces reproducible inference with overall and modality-specific probabilities:
-
-| Prediction block | Meaning |
-|---|---|
-| `prob_asd_overall_classical_pct` | ASD probability from the selected classical model |
-| `prob_asd_overall_deep_pct` | ASD probability from the selected deep model |
-| `prob_asd_overall_ensemble_pct` | Combined classical/deep probability |
-| `prob_asd_tobii_pct` | Modality-level ASD probability from Tobii/gaze features |
-| `prob_asd_emotion_pct` | Modality-level ASD probability from emotion features |
-| `prob_asd_mimic_pct` | Modality-level ASD probability from mimic features |
-| `prob_asd_face_points_pct` | Modality-level ASD probability from face-point features |
-
-Probability distribution across all 99 samples:
-
-| Probability column | Mean | Std | Min | Median | Max |
-|---|---:|---:|---:|---:|---:|
-| Overall classical ASD, % | 52.44 | 48.54 | 0.00 | 91.51 | 100.00 |
-| Overall deep ASD, % | 57.22 | 17.18 | 12.71 | 59.05 | 87.72 |
-| Overall ensemble ASD, % | 54.83 | 30.37 | 6.36 | 74.01 | 93.86 |
-| Tobii ASD, % | 52.24 | 45.65 | 0.00 | 79.17 | 100.00 |
-| Emotion ASD, % | 50.29 | 16.73 | 24.33 | 49.76 | 87.73 |
-| Mimic ASD, % | 51.99 | 41.98 | 0.01 | 55.93 | 100.00 |
-| Face-points ASD, % | 50.93 | 28.17 | 1.70 | 41.75 | 100.00 |
-
-The inference design is scientifically useful because it gives both a final ASD/TD decision and interpretable modality-level probabilities.
-
-## Why The Results Look This Way
-
-1. Gaze-related features dominate because the task is behaviorally centered around visual attention and object interaction. This is visible in the highest Cohen's d values and in the Tobii/gaze ROC-AUC.
-2. Classical models perform very strongly because the engineered tabular features already encode high-level behavioral summaries. With 99 samples, this representation is statistically efficient.
-3. Deep time-series models still perform well because they capture dynamic patterns, but the dataset size limits the advantage of high-capacity sequence models.
-4. Unsupervised clustering is moderate because ASD/TD differences are distributed, overlapping and multidimensional. The data are not separated by one simple geometric boundary.
-5. Modality-level inference shows that no single behavioral channel explains everything. Gaze is strongest, mimic is complementary, face points add spatial facial behavior, and emotion alone is weaker but still informative.
-
-## Reproducible Workflow
-
-Recommended execution order:
+## Repository Structure
 
 ```text
-1. Run 01_dataset_exploration.ipynb
-2. Run 02_model_training_and_multitask_inference.ipynb
-```
-
-Expected generated outputs from the notebooks:
-
-```text
-Analysis_Result/
-├── 01_dataset_exploration.ipynb
-├── 02_model_training_and_multitask_inference.ipynb
-├── 01_EDA/
-│   ├── tables/
-│   └── figures/
-└── 02_Modeling/
-    ├── tables/
+.
+├── Dataset-2/
+├── HMB_TSC_main-code.ipynb
+├── IEEE_color_palette_before_after_dark2.csv
+├── IEEE_color_palette_before_after_dark2.md
+├── README.md
+├── requirements_hmb_tsc.txt
+└── results/
     ├── figures/
-    └── models/
+    ├── histories/
+    ├── predictions/
+    └── tables/
 ```
 
-This README also includes extracted notebook-output figures under:
+## Main Notebook
+
+The complete executable workflow is implemented in:
 
 ```text
-README_assets/
-├── 01_EDA/
-└── 02_Modeling/
+HMB_TSC_main-code.ipynb
 ```
 
-## Graphical Artifact Index
+The notebook is self-contained and includes the experimental code for:
 
-| Area | Figure |
+- dataset loading and file auditing;
+- original/augmented file handling;
+- trajectory cleaning and outlier filtering;
+- demographic and exploratory data analysis;
+- mutual information and correlation analysis;
+- Euclidean magnitude transformation;
+- logarithmic feature transformation;
+- standardization using training statistics only;
+- interpolation to fixed-length sequences;
+- subject-level train/test splitting;
+- baseline model training;
+- full HMB-TSC training;
+- 5-fold cross-validation;
+- ablation studies;
+- nested 5x3 cross-validation;
+- statistical comparisons;
+- Kinect coordinate-noise sensitivity analysis;
+- leave-10%-subjects validation;
+- final result tables and publication-ready figures.
+
+## Dataset Summary
+
+The experiment uses the original 2D skeletal trajectories stored under `Dataset-2/`.
+The GitHub archive contains only the 100 original 2D trajectory files that are required to rerun the released workflow. Stored augmentation files and raw video files are not included in the archive because they are not used as validation/test samples.
+
+| Item | Value |
+|---|---:|
+| Original 2D files used | 100 |
+| Stored augmentation files included in archive | 0 |
+| Train-only synthetic variants generated per training trajectory | 7 |
+| Rows before filtering | 3,183 |
+| Rows after filtering | 3,128 |
+| Removed rows | 55 |
+| Removed rows, % | 1.73 |
+| Trajectory tensor before feature reduction | `(100, 256, 25, 2)` |
+| Model input after log-magnitude transformation | `(100, 256, 25)` |
+| TD class samples | 50 |
+| ASD class samples | 50 |
+| Subjects | 100 |
+
+The validation workflow is subject-aware. Synthetic augmentation variants are generated only from the training subjects inside each split and are never used as validation/test samples, which prevents inflated performance from near-duplicate augmented trajectories.
+
+## Preprocessing Pipeline
+
+The notebook reconstructs the preprocessing pipeline used for the experiment:
+
+1. Load original 2D skeletal files from `Dataset-2`.
+2. Audit original files and optional stored augmentation paths if present.
+3. Parse trajectory-level metadata and labels.
+4. Filter invalid or outlier trajectory frames.
+5. Convert joint coordinates into Euclidean magnitude-based features.
+6. Apply logarithmic transformation to stabilize feature scale.
+7. Interpolate each sequence to a fixed temporal length of 256.
+8. Standardize features using training-set statistics only.
+9. Build subject-level splits with zero subject overlap between train and test partitions.
+
+## Train-Only Augmentation Protocol
+
+The notebook implements seven train-only transformations in `augment_training_coords`. The transformations are applied only after a subject-level split has been created and only to the training subset of the current holdout, 5-fold, nested inner/outer, or leave-10%-subjects split.
+
+| Variant | Implementation in the notebook |
 |---|---|
-| EDA | `README_assets/01_EDA/class_distribution.png` |
-| EDA | `README_assets/01_EDA/missing_ratio_top20.png` |
-| EDA | `README_assets/01_EDA/effect_size_top20.png` |
-| EDA | `README_assets/01_EDA/top_feature_histograms.png` |
-| EDA | `README_assets/01_EDA/correlation_heatmap_top25.png` |
-| EDA | `README_assets/01_EDA/pca_projection.png` |
-| EDA | `README_assets/01_EDA/tsne_projection.png` |
-| EDA | `README_assets/01_EDA/kmeans_clusters_pca.png` |
-| EDA | `README_assets/01_EDA/hierarchical_dendrogram.png` |
-| EDA | `README_assets/01_EDA/segment_metric_trends.png` |
-| EDA | `README_assets/01_EDA/temporal_profiles_class_mean.png` |
-| EDA | `README_assets/01_EDA/single_session_eye_object_xy_td_vs_asd.png` |
-| EDA | `README_assets/01_EDA/single_session_head_rotation_td_vs_asd.png` |
-| EDA | `README_assets/01_EDA/single_session_facial_mimic_td_vs_asd.png` |
-| EDA | `README_assets/01_EDA/single_session_emotion_td_vs_asd.png` |
-| Modeling | `README_assets/02_Modeling/classical_roc_pr_curves.png` |
-| Modeling | `README_assets/02_Modeling/deep_roc_curve_models.png` |
-| Modeling | `README_assets/02_Modeling/deep_training_history_best_model.png` |
-| Modeling | `README_assets/02_Modeling/model_comparison_bar.png` |
+| Magnitude scaling (MS) | Multiplies all coordinates by `alpha`, where `alpha` is sampled from `[0.9, 1.1]` |
+| Time warping (TW) | Uses cubic B-spline speed interpolation with `sigma = 0.2` and `3` internal control points |
+| Jittering (JT) | Adds Gaussian noise with `mu = 0` and `sigma = 0.01` |
+| Horizontal mirroring (HM) | Reflects the horizontal coordinate by multiplying the X-axis by `-1` |
+| Random rotation (RR) | Applies a 2D rotation sampled from `[-5, 5]` degrees |
+| Scaling + JT | Applies MS followed by JT |
+| TW + JT | Applies TW followed by JT |
 
-## Limitations
+The original trajectory is retained in the training set together with these seven generated variants, giving eight training instances per original training trajectory. Test and validation subjects remain unaugmented.
 
-- The dataset contains 99 sessions, so all model results should be interpreted as experimental evidence, not as clinical validation.
-- The strongest cross-validation performance comes from engineered tabular features; external validation on independent cohorts would be required for stronger generalization claims.
-- A warning appears during classical model fitting for some folds because one internal split contained only one class. The final reported model tables were still produced, but this should be considered when designing future validation protocols.
+## Model Overview
 
-## Recommended GitHub Repository Name
+HMB-TSC is a hybrid multibranch neural architecture for skeletal time-series classification. The released implementation uses the full scaled architecture with `6,818,113` trainable parameters.
 
-Short repository name:
+Input shape:
 
 ```text
-asd-multimodal-behavior-modeling
+batch_size x 256 x 25
 ```
 
-Scientific repository title:
+The full HMB-TSC model contains three complementary branches:
+
+- Transformer branch for global temporal dependencies;
+- CNN-BiLSTM branch for local spatiotemporal structure and long-range recurrent dynamics;
+- CNN-BiGRU branch for complementary sequential dynamics.
+
+The branch outputs are concatenated and passed through a dense classification head that produces a single binary logit.
+
+Full HMB-TSC trainable parameters:
 
 ```text
-Multimodal Behavioral Modeling for ASD/TD Classification
+6,818,113
 ```
+
+## Compared Models
+
+The notebook evaluates the proposed model against three baseline architectures:
+
+- LSTM;
+- CNN;
+- Transformer;
+- HMB-TSC.
+
+The baseline models are kept separate from the HMB-TSC ablation variants.
+
+## Validation Protocols
+
+The project includes several validation settings:
+
+| Protocol | Purpose |
+|---|---|
+| Holdout validation | Independent subject-level test split |
+| 5-fold cross-validation | Outer-fold performance estimation |
+| Nested 5x3 cross-validation | Outer validation with inner hyperparameter selection |
+| Ablation 5-fold CV | Contribution analysis of HMB-TSC branches |
+| Kinect noise sensitivity | Robustness to joint-coordinate measurement error |
+| Leave-10%-subjects validation | Generalization to unseen participants |
+
+The leakage audit confirms zero subject overlap between training and testing partitions for the holdout, 5-fold, nested outer folds, and leave-10%-subjects validation.
+
+## Holdout Results
+
+| Model | Parameters | Accuracy | AUROC | Precision | Recall | F1 | MacroF1 | Specificity |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| HMB-TSC | 6,818,113 | 0.850 | 0.948 | 0.846 | 0.917 | 0.880 | 0.840 | 0.750 |
+| LSTM | 8,097 | 0.400 | 0.438 | 0.000 | 0.000 | 0.000 | 0.286 | 1.000 |
+| CNN | 9,697 | 0.650 | 0.740 | 1.000 | 0.417 | 0.588 | 0.642 | 1.000 |
+| Transformer | 36,193 | 0.650 | 0.906 | 1.000 | 0.417 | 0.588 | 0.642 | 1.000 |
+
+HMB-TSC achieved the strongest holdout performance, with AUROC `0.948` and F1 `0.880`.
+
+## 5-Fold Cross-Validation Results
+
+| Model | Accuracy mean | Accuracy worst | AUROC mean | AUROC worst | F1 mean | F1 worst |
+|---|---:|---:|---:|---:|---:|---:|
+| HMB-TSC | 0.850 | 0.800 | 0.940 | 0.890 | 0.845 | 0.800 |
+| CNN | 0.700 | 0.600 | 0.774 | 0.630 | 0.597 | 0.429 |
+| LSTM | 0.550 | 0.450 | 0.646 | 0.490 | 0.383 | 0.000 |
+| Transformer | 0.650 | 0.550 | 0.734 | 0.580 | 0.561 | 0.429 |
+
+HMB-TSC achieved the highest mean accuracy, AUROC, and F1 across the 5-fold validation protocol.
+
+## Nested 5x3 Cross-Validation Results
+
+| Model | Accuracy mean | Accuracy worst | AUROC mean | AUROC worst | F1 mean | F1 worst |
+|---|---:|---:|---:|---:|---:|---:|
+| HMB-TSC | 0.850 | 0.800 | 0.940 | 0.890 | 0.845 | 0.800 |
+| CNN | 0.700 | 0.600 | 0.774 | 0.630 | 0.597 | 0.429 |
+| LSTM | 0.550 | 0.450 | 0.646 | 0.490 | 0.383 | 0.000 |
+| Transformer | 0.650 | 0.550 | 0.734 | 0.580 | 0.561 | 0.429 |
+
+The nested protocol uses the same outer folds while executing the inner model-selection structure. In the released notebook, the recovered hyperparameter grid contains a single selected configuration, so the generated nested values match the 5-fold outer metrics.
+
+## HMB-TSC Ablation Study
+
+The ablation study evaluates the contribution of each branch and branch-only configuration using 5-fold cross-validation.
+
+| Variant | Parameters | Accuracy, % | MacroF1, % | AUROC | p Accuracy vs full | p MacroF1 vs full | p AUROC vs full |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| HMB-TSC | 6,818,113 | 85.00 | 84.98 | 0.940 | - | - | - |
+| without-transformer | 5,509,441 | 81.00 | 80.90 | 0.934 | 0.5122 | 0.5094 | 0.7753 |
+| without-cnn-bilstm | 3,968,577 | 89.00 | 88.99 | 0.940 | 0.2420 | 0.2408 | 1.0000 |
+| without-cnn-bigru | 4,166,209 | 83.00 | 82.86 | 0.940 | 0.4766 | 0.4689 | 1.0000 |
+| transformer-only | 1,316,673 | 77.00 | 76.86 | 0.900 | 0.1202 | 0.1148 | 0.0247 |
+| cnn-bilstm-only | 2,857,537 | 85.00 | 84.84 | 0.932 | 1.0000 | 0.9756 | 0.7075 |
+| cnn-bigru-only | 2,659,905 | 88.00 | 87.99 | 0.946 | 0.4263 | 0.4239 | 0.7160 |
+
+The table reports paired t-test p-values across the same external folds. This makes the ablation comparison fold-aligned rather than based only on independent mean values.
+
+## Statistical Testing Against Baselines
+
+The repository includes paired statistical comparisons between HMB-TSC and the baseline models.
+
+| Comparison | p Accuracy | p AUROC | McNemar p-value | Bonferroni alpha |
+|---|---:|---:|---:|---:|
+| HMB-TSC vs LSTM | 0.0020 | 0.0109 | 5.30e-06 | 0.0167 |
+| HMB-TSC vs CNN | 0.0231 | 0.0234 | 0.0107 | 0.0167 |
+| HMB-TSC vs Transformer | 0.0135 | 0.0023 | 0.0003 | 0.0167 |
+
+These tests are stored in:
+
+```text
+results/tables/table12_statistical_tests_5fold.csv
+```
+
+## Kinect Noise Sensitivity
+
+To evaluate robustness to Kinect joint-localization error, uniform noise was injected into joint coordinates at two levels: `±13 mm` and `±25 mm`.
+
+| Noise level | AUROC mean | AUROC std | Accuracy mean | F1 mean | Mean AUROC drop | Worst AUROC drop |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 mm | 0.940 | 0.029 | 0.850 | 0.845 | - | - |
+| 13 mm | 0.940 | 0.029 | 0.810 | 0.835 | 0.000 | 0.000 |
+| 25 mm | 0.934 | 0.055 | 0.740 | 0.801 | 0.006 | 0.050 |
+
+The AUROC remained stable under `±13 mm` coordinate noise and decreased only slightly under `±25 mm` noise.
+
+## Leave-10%-Subjects Validation
+
+The leave-10%-subjects protocol evaluates generalization to previously unseen participants. Each fold excludes 10 subjects from training and uses them only for testing.
+
+| Metric | Mean | Standard deviation | Worst fold |
+|---|---:|---:|---:|
+| Accuracy | 0.880 | 0.140 | 0.600 |
+| AUROC | 0.920 | 0.118 | 0.680 |
+| F1 | 0.875 | 0.145 | 0.600 |
+| Specificity | 0.900 | 0.141 | 0.600 |
+
+The subject-leakage audit confirms zero overlap between training and testing subjects.
+
+## Visualization Standards
+
+All regenerated publication figures use:
+
+- Matplotlib;
+- Times New Roman;
+- high-resolution export at 350 DPI;
+- consistent font sizing;
+- annotated confusion matrices;
+- readable plot margins for labels and bar annotations;
+- ColorBrewer Dark2 color palette.
+
+The applied ColorBrewer Dark2 palette is:
+
+```text
+#1b9e77  green
+#d95f02  orange
+#7570b3  purple
+#e7298a  pink
+#66a61e  olive green
+#e6ab02  mustard
+#a6761d  brown
+#666666  gray
+```
+
+The before/after color audit is stored in:
+
+```text
+results/tables/reviewer_figures_color_palette_before_after.csv
+IEEE_color_palette_before_after_dark2.csv
+IEEE_color_palette_before_after_dark2.md
+```
+
+## Result Artifacts
+
+Key result tables:
+
+```text
+results/tables/sequence_shape_and_dataset_selection_report.csv
+results/tables/table4_mutual_information_before_after.csv
+results/tables/table5_filtering_summary.csv
+results/tables/table6_feature_stats_before_after.csv
+results/tables/table8_holdout_validation_metrics.csv
+results/tables/table9_ablation_5fold_with_pvalues.csv
+results/tables/table10_5fold_cv_mean_std.csv
+results/tables/table11_nested_5x3_cv_mean_std.csv
+results/tables/table12_statistical_tests_5fold.csv
+results/tables/table12_statistical_tests_nested_5x3.csv
+results/tables/reviewer_kinect_noise_sensitivity_summary.csv
+results/tables/reviewer_subject10_mean_std_worst_metrics.csv
+results/tables/reviewer_subject_leakage_and_split_balance_audit.csv
+```
+
+Key figures:
+
+```text
+results/figures/holdout_roc_curves.png
+results/figures/holdout_precision_recall_curves.png
+results/figures/holdout_confusion_matrices.png
+results/figures/fivefold_roc_curves.png
+results/figures/fivefold_precision_recall_curves.png
+results/figures/fivefold_confusion_matrices.png
+results/figures/nested5x3_roc_curves.png
+results/figures/nested5x3_precision_recall_curves.png
+results/figures/nested_5x3_confusion_matrices.png
+results/figures/reviewer_kinect_noise_auc_sensitivity.png
+results/figures/reviewer_subject10_fold_metrics.png
+```
+
+## Reproducibility
+
+Recommended environment:
+
+```text
+Python 3.11
+PyTorch
+Jupyter/IPython kernel
+```
+
+The notebook was executed with the following local kernel:
+
+```text
+ai-pytorch-mps (Python 3.11)
+```
+
+Install the required Python packages:
+
+```bash
+pip install -r requirements_hmb_tsc.txt
+```
+
+Run the full experiment by opening:
+
+```text
+HMB_TSC_main-code.ipynb
+```
+
+Then execute all cells from top to bottom. The generated outputs are written to:
+
+```text
+results/
+```
+
+## Notes on Reproducible Interpretation
+
+- The reported repository-run values in this README are taken from existing generated result files under `results/tables/`.
+- The validation procedures are subject-aware and include leakage audits.
+- Synthetic augmentation variants are generated only in training folds and are excluded from validation/test.
+- The HMB-TSC model in the notebook uses the full scaled architecture with approximately 6.8M trainable parameters.
+- The repository includes both baseline comparisons and branch-level ablation variants.
+- Robustness and generalization are evaluated using Kinect noise sensitivity and leave-10%-subjects validation.
+
+## Scope
+
+This repository is intended for research reproducibility. It is not a clinical diagnostic product. The results should be interpreted as experimental evidence for the proposed skeletal time-series classification approach on the available dataset.
