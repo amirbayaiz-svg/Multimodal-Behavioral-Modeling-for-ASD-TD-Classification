@@ -274,49 +274,6 @@ The applied ColorBrewer Dark2 palette is:
 #666666  gray
 ```
 
-The before/after color audit is stored in:
-
-```text
-results/tables/reviewer_figures_color_palette_before_after.csv
-IEEE_color_palette_before_after_dark2.csv
-IEEE_color_palette_before_after_dark2.md
-```
-
-## Result Artifacts
-
-Key result tables:
-
-```text
-results/tables/sequence_shape_and_dataset_selection_report.csv
-results/tables/table4_mutual_information_before_after.csv
-results/tables/table5_filtering_summary.csv
-results/tables/table6_feature_stats_before_after.csv
-results/tables/table8_holdout_validation_metrics.csv
-results/tables/table9_ablation_5fold_with_pvalues.csv
-results/tables/table10_5fold_cv_mean_std.csv
-results/tables/table11_nested_5x3_cv_mean_std.csv
-results/tables/table12_statistical_tests_5fold.csv
-results/tables/table12_statistical_tests_nested_5x3.csv
-results/tables/reviewer_kinect_noise_sensitivity_summary.csv
-results/tables/reviewer_subject10_mean_std_worst_metrics.csv
-results/tables/reviewer_subject_leakage_and_split_balance_audit.csv
-```
-
-Key figures:
-
-```text
-results/figures/holdout_roc_curves.png
-results/figures/holdout_precision_recall_curves.png
-results/figures/holdout_confusion_matrices.png
-results/figures/fivefold_roc_curves.png
-results/figures/fivefold_precision_recall_curves.png
-results/figures/fivefold_confusion_matrices.png
-results/figures/nested5x3_roc_curves.png
-results/figures/nested5x3_precision_recall_curves.png
-results/figures/nested_5x3_confusion_matrices.png
-results/figures/reviewer_kinect_noise_auc_sensitivity.png
-results/figures/reviewer_subject10_fold_metrics.png
-```
 
 ## Reproducibility
 
